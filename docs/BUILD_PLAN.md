@@ -293,6 +293,78 @@ Each phase is a working milestone. Don't skip ahead — each builds on the last.
 
 ---
 
+## 5.5 Feature: Auto Mode vs Plan Mode (Human-in-the-Loop)
+
+Two ways the user can build, toggled by a switch in the UI:
+
+| Mode | Behaviour |
+|------|-----------|
+| **Auto Mode** | Prompt -> AI plans AND builds in one shot. No interruption. |
+| **Plan Mode** | Prompt -> AI shows the plan -> **user approves / edits / rejects** -> only then it builds. |
+
+### How it works (LangGraph interrupt)
+
+Our agent already produces a plan (Planner) and a task list (Architect) *before*
+the Coder writes any code. Plan Mode simply **pauses the graph right before the
+Coder runs**, returns the plan to the user, and waits. This is LangGraph's
+"human-in-the-loop interrupt" pattern.
+
+```mermaid
+flowchart LR
+    Start([Prompt]) --> Planner --> Architect --> Gate{Mode?}
+    Gate -->|Auto| Coder
+    Gate -->|Plan| Pause[Pause and show plan to user]
+    Pause --> Approve{User decision}
+    Approve -->|Approve| Coder
+    Approve -->|Edit plan| Architect
+    Approve -->|Reject| End([Cancel])
+    Coder --> Done([Build app])
+```
+
+### Implementation steps
+
+1. **Add `mode` to the graph state** — `"auto"` or `"plan"`, set from the API request.
+2. **Add a checkpointer** so the graph can pause and resume:
+   ```python
+   from langgraph.checkpoint.memory import MemorySaver   # later: PostgresSaver
+   checkpointer = MemorySaver()
+   ```
+3. **Interrupt before the Coder** when in plan mode:
+   ```python
+   agent = graph.compile(
+       checkpointer=checkpointer,
+       interrupt_before=["coder"],   # pause here so user can review
+   )
+   ```
+4. **Run with a thread id** (one per project/conversation) so we can resume the
+   exact paused run:
+   ```python
+   config = {"configurable": {"thread_id": project_id}}
+   state = agent.invoke({"user_prompt": prompt, "mode": "plan"}, config)
+   # graph stops after architect; `state` now holds the plan + task list
+   ```
+5. **Show the plan in the UI** (frontend renders `plan` + `task_plan`) with three
+   buttons: **Approve & Build**, **Edit**, **Cancel**.
+6. **On Approve -> resume** the same run from where it paused:
+   ```python
+   agent.invoke(None, config)   # None = continue from checkpoint -> runs Coder
+   ```
+   On **Edit**: re-run the architect with the user's tweaks. On **Cancel**: drop the thread.
+
+> Auto Mode = compile/run WITHOUT `interrupt_before` (or skip the gate), so it
+> flows straight from Architect to Coder with no pause.
+
+### UI
+
+- A simple toggle near the chat input: `[ Auto ⚡ | Plan 📋 ]`
+- In Plan Mode, the assistant's first reply is the plan (features + file list +
+  task steps) with the Approve / Edit / Cancel buttons.
+
+This is a natural Phase 5 addition (it reuses the edit-mode plumbing), but the
+toggle + interrupt can be prototyped as early as Phase 1.
+
+---
+
 ## 6. Key Technical Challenges (know these upfront)
 
 1. **Making generated apps runnable** — the agent must output a *complete, valid*
