@@ -1,3 +1,5 @@
+import os
+
 from dotenv import load_dotenv
 from langchain_core.globals import set_verbose, set_debug
 from langchain_groq.chat_models import ChatGroq
@@ -11,8 +13,11 @@ from agent.tools import write_file, read_file, get_current_directory, list_files
 
 _ = load_dotenv()
 
-set_debug(True)
-set_verbose(True)
+# Verbose/debug tracing is opt-in (AGENT_DEBUG=true). OFF by default so the
+# server isn't slowed down and doesn't leak prompt internals into its logs.
+_DEBUG = os.getenv("AGENT_DEBUG", "false").lower() in ("1", "true", "yes")
+set_debug(_DEBUG)
+set_verbose(_DEBUG)
 
 llm = ChatGroq(model="openai/gpt-oss-120b")
 

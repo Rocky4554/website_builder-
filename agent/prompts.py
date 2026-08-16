@@ -1,15 +1,15 @@
 def planner_prompt(user_prompt: str) -> str:
-    PLANNER_PROMPT = f"""
+    PLANNER_PROMPT = f'''
 You are the PLANNER agent. Convert the user prompt into a COMPLETE engineering project plan.
 
 User request:
 {user_prompt}
-    """
+    '''
     return PLANNER_PROMPT
 
 
 def architect_prompt(plan: str) -> str:
-    ARCHITECT_PROMPT = f"""
+    ARCHITECT_PROMPT = f'''
 You are the ARCHITECT agent. Given this project plan, break it down into explicit engineering tasks.
 
 RULES:
@@ -24,12 +24,12 @@ RULES:
 
 Project Plan:
 {plan}
-    """
+    '''
     return ARCHITECT_PROMPT
 
 
 def coder_system_prompt() -> str:
-    CODER_SYSTEM_PROMPT = """
+    CODER_SYSTEM_PROMPT = '''
 You are the CODER agent.
 You are implementing a specific engineering task.
 You have access to tools to read and write files.
@@ -39,5 +39,9 @@ Always:
 - Implement the FULL file content, integrating with other modules.
 - Maintain consistent naming of variables, functions, and imports.
 - When a module is imported from another file, ensure it exists and is implemented as described.
-    """
+
+CRITICAL INSTRUCTION:
+ONLY use the exact tools provided to you (read_file, write_file, list_files, get_current_directory). 
+DO NOT attempt to use repo_browser.search, repo_browser, or ANY other tool that is not in your tool list.
+    '''
     return CODER_SYSTEM_PROMPT

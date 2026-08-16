@@ -90,9 +90,9 @@ serve the app — all client-side. The dev server URL is piped into our iframe.
 
 ```mermaid
 sequenceDiagram
-    participant UI as Our App
-    participant WC as WebContainer (browser)
-    participant IF as Preview iframe
+    participant UI as "Our App"
+    participant WC as "WebContainer (browser)"
+    participant IF as "Preview iframe"
     UI->>WC: mount generated files
     UI->>WC: run "npm install"
     UI->>WC: run "npm run dev"

@@ -180,6 +180,42 @@ New agent capabilities needed:
 - **Self-healing**: when preview shows an error, feed it back to the agent to fix
 - **Tool: `write_file`** already exists — we route its output to DB + WebContainer
 
+### 3.4 Backend Generation Policy (what we build vs what the user fills in)
+
+> Terminology: "backend" here means the **generated app's backend** (the code the
+> AI writes for the user's project) — *not* our FastAPI server that runs the agent.
+
+The agent **fully generates the backend code**, correctly and completely:
+
+- ✅ **All API endpoints / routes** (`/api/...`), handlers, controllers, services
+- ✅ Server entry (`server.js` / `app.py` / route files), middleware, models/ORM setup
+- ✅ Correct wiring between frontend `fetch` calls and these endpoints
+
+The agent does **NOT** invent values it cannot know. Anything environment- or
+secret-specific is emitted as a **placeholder** + a **sample env file** the user
+fills in manually:
+
+| Value | How we handle it |
+|-------|------------------|
+| `DATABASE_URL` / DB connection string | Placeholder in `.env.example`, referenced via `process.env` / `os.environ` |
+| API keys / secrets (`STRIPE_KEY`, `OPENAI_API_KEY`, …) | Placeholder in `.env.example` |
+| External service URLs we can't configure | Placeholder in `.env.example` |
+| Any host/port/credential specific to the user | Placeholder in `.env.example` |
+
+**Rules for the agent:**
+1. Never hard-code a real secret, DB URL, or external URL — always read from env.
+2. Always generate a **`.env.example`** listing every required variable with a
+   clear placeholder value and a one-line comment.
+3. Add a **README** section: "Set these before running the backend yourself."
+4. Code must run as soon as the user pastes real values into `.env` — no other
+   edits needed.
+
+> This keeps the generated backend **portable and correct**: every endpoint is in
+> place, the only thing missing is the user's own secrets/URLs, which they add
+> manually. Matches the preview decision — see
+> [PREVIEW_OPTIONS.md](PREVIEW_OPTIONS.md) (we ship the backend as code; the user
+> runs it).
+
 ---
 
 ## 4. End-to-End Data Flow (the important part)
