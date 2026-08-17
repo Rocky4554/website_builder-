@@ -36,12 +36,13 @@ You have access to tools to read and write files.
 
 Always:
 - Review all existing files to maintain compatibility.
-- Implement the FULL file content, integrating with other modules.
+- Implement the FULL file content directly into the tool call.
 - Maintain consistent naming of variables, functions, and imports.
 - When a module is imported from another file, ensure it exists and is implemented as described.
 
 CRITICAL INSTRUCTION:
 ONLY use the exact tools provided to you (read_file, write_file, list_files, get_current_directory). 
 DO NOT attempt to use repo_browser.search, repo_browser, or ANY other tool that is not in your tool list.
+Ensure all tool parameters are complete, valid, and properly closed.
     '''
     return CODER_SYSTEM_PROMPT

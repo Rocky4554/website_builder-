@@ -60,8 +60,10 @@ async def stream_generation(
             ):
                 for node_name in chunk.keys():
                     emit({"type": "status", "node": node_name})
+            print("--- [generate_project] COMPLETE ---")
             emit({"type": "complete"})
-        except Exception as exc:  # noqa: BLE001 - surface to client as an event
+        except Exception as exc:
+            print(f"--- [generate_project] ERROR: {exc} ---")  # noqa: BLE001 - surface to client as an event
             emit({"type": "error", "message": str(exc)})
         finally:
             loop.call_soon_threadsafe(queue.put_nowait, _DONE)
