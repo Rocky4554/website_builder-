@@ -30,6 +30,7 @@ export default function DashboardPage() {
   const [showModal, setShowModal] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
   const [newProjectDesc, setNewProjectDesc] = useState("");
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
   const loadProjects = async () => {
     try {
@@ -68,15 +69,21 @@ export default function DashboardPage() {
     handleCreateAndStart(name, quickPrompt.trim());
   };
 
-  const handleDeleteProject = async (id: string, e: React.MouseEvent) => {
+  const handleDeleteProject = (id: string, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!confirm("Are you sure you want to delete this project?")) return;
+    setPendingDeleteId(id);
+  };
+
+  const confirmDeleteProject = async () => {
+    if (!pendingDeleteId) return;
     try {
-      await deleteProject(id);
-      setProjects((prev) => prev.filter((p) => p.id !== id));
+      await deleteProject(pendingDeleteId);
+      setProjects((prev) => prev.filter((p) => p.id !== pendingDeleteId));
     } catch (err) {
       console.error("Delete error:", err);
+    } finally {
+      setPendingDeleteId(null);
     }
   };
 
@@ -269,6 +276,31 @@ export default function DashboardPage() {
                   <Plus className="w-3.5 h-3.5" />
                 )}
                 <span>Create & Open</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingDeleteId && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-950 border border-slate-800 rounded-2xl max-w-sm w-full p-6 space-y-4 shadow-2xl">
+            <h3 className="text-sm font-bold text-white">Delete this project?</h3>
+            <p className="text-xs text-slate-400">
+              This removes the project and its files. This cannot be undone.
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                onClick={() => setPendingDeleteId(null)}
+                className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-xs text-slate-400 font-medium transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDeleteProject}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-xs text-white font-semibold transition-colors"
+              >
+                Delete
               </button>
             </div>
           </div>

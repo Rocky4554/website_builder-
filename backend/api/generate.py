@@ -3,14 +3,20 @@
     ws  <api_prefix>/projects/{project_id}/generate
 
 Protocol:
-  1. Client connects, then sends ONE json message: {"token": "<jwt>", "prompt": "..."}
+  1. Client connects, then sends ONE json message:
+        {"token": "<jwt>", "prompt": "...", "mode": "auto"|"plan"}
      (Browsers can't set Authorization headers on WebSockets, so we authenticate
       via the first message instead of a query string — keeps the token out of
       access logs / URLs.)
   2. Server verifies the JWT, checks the user owns the project, then streams:
         {"type":"status","node":"planner"}
+        {"type":"plan","plan":{...}}
+        {"type":"awaiting_approval","plan":{...}}   # plan mode only
         {"type":"file","path":"index.html","content":"..."}
-        {"type":"complete"} | {"type":"error","message":"..."}
+        {"type":"complete"} | {"type":"error","message":"...","partial":bool}
+        | {"type":"cancelled"}
+  3. In plan mode, after awaiting_approval the client sends:
+        {"action":"approve"} | {"action":"reject"}
 """
 import asyncio
 import uuid
@@ -22,6 +28,7 @@ from backend.config import get_settings
 from backend.db.database import get_sessionmaker
 from backend.db.models import Message, Project, ProjectFile
 from backend.security.auth import decode_token
+from backend.security.rate_limit import generation_limiter
 from backend.services.agent_runner import stream_generation
 
 router = APIRouter()
@@ -29,6 +36,7 @@ router = APIRouter()
 # Close codes
 _POLICY_VIOLATION = 1008
 _AUTH_TIMEOUT_SECONDS = 15
+_APPROVAL_TIMEOUT_SECONDS = 300
 
 
 @router.websocket("/projects/{project_id}/generate")
@@ -48,6 +56,10 @@ async def generate_ws(websocket: WebSocket, project_id: uuid.UUID) -> None:
 
     token = (first or {}).get("token")
     prompt = ((first or {}).get("prompt") or "").strip()
+    mode = str((first or {}).get("mode") or "auto").lower()
+    if mode not in {"auto", "plan"}:
+        mode = "auto"
+
     try:
         user = decode_token(token, settings)
         user_uuid = uuid.UUID(user.id)
@@ -62,6 +74,18 @@ async def generate_ws(websocket: WebSocket, project_id: uuid.UUID) -> None:
         await websocket.close(code=_POLICY_VIOLATION, reason="Empty prompt")
         return
 
+    allowed, retry_after = generation_limiter.allow(str(user_uuid))
+    if not allowed:
+        await _safe_send(
+            websocket,
+            {
+                "type": "error",
+                "message": f"Rate limit exceeded. Try again in {retry_after}s.",
+            },
+        )
+        await websocket.close(code=_POLICY_VIOLATION, reason="Rate limit exceeded")
+        return
+
     sessionmaker = get_sessionmaker()
 
     # --- 2. Ownership check ---
@@ -73,38 +97,69 @@ async def generate_ws(websocket: WebSocket, project_id: uuid.UUID) -> None:
         if project is None:
             await websocket.close(code=_POLICY_VIOLATION, reason="Project not found")
             return
-        # record the user's prompt as a chat message
         session.add(Message(project_id=project_id, role="user", content=prompt))
         await session.commit()
 
+        file_rows = (
+            await session.execute(select(ProjectFile).where(ProjectFile.project_id == project_id))
+        ).scalars().all()
+        existing_files = {row.path: row.content for row in file_rows}
+
     # --- 3. Stream generation, persisting files as they arrive ---
-    # We hold back the terminal "complete"/"error" event: the assistant chat
-    # message is saved FIRST, so by the time the client sees the terminal event
-    # everything (files + messages) is already persisted.
     files_written: list[str] = []
     terminal: dict | None = None
+    approval_queue: asyncio.Queue = asyncio.Queue()
+    wait_task: asyncio.Task | None = None
+
+    async def _pump_approvals() -> None:
+        """Read follow-up WS messages (approve/reject) while generation runs."""
+        try:
+            while True:
+                msg = await websocket.receive_json()
+                if isinstance(msg, dict) and msg.get("action"):
+                    await approval_queue.put(msg)
+        except Exception:
+            await approval_queue.put({"action": "reject"})
+
     try:
+        wait_task = asyncio.create_task(_pump_approvals())
         async for event in stream_generation(
-            user_id=str(user_uuid), project_id=str(project_id), prompt=prompt
+            user_id=str(user_uuid),
+            project_id=str(project_id),
+            prompt=prompt,
+            mode=mode,
+            existing_files=existing_files,
+            approval_queue=approval_queue,
         ):
             etype = event["type"]
             if etype == "file":
                 await _upsert_file(sessionmaker, project_id, event["path"], event["content"])
                 files_written.append(event["path"])
                 await websocket.send_json(event)
-            elif etype in ("complete", "error"):
+            elif etype in ("complete", "error", "cancelled"):
                 terminal = event
                 break
-            else:  # status, etc.
+            else:
                 await websocket.send_json(event)
     except WebSocketDisconnect:
-        return  # client went away; the generation thread finishes on its own
+        await approval_queue.put({"action": "reject"})
+        return
     except Exception as exc:  # noqa: BLE001
         terminal = {"type": "error", "message": str(exc)}
+    finally:
+        if wait_task is not None:
+            wait_task.cancel()
+            try:
+                await wait_task
+            except (asyncio.CancelledError, Exception):
+                pass
 
     # --- 4. Save the assistant summary, THEN emit the terminal event ---
     if terminal is not None and terminal.get("type") == "error":
-        summary = f"Generation failed: {terminal.get('message', 'unknown error')}"
+        prefix = "Partial generation: " if terminal.get("partial") else "Generation failed: "
+        summary = prefix + str(terminal.get("message", "unknown error"))
+    elif terminal is not None and terminal.get("type") == "cancelled":
+        summary = "Build cancelled — plan was not approved."
     elif files_written:
         summary = f"Generated {len(files_written)} file(s): " + ", ".join(files_written)
     else:

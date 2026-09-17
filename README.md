@@ -1,41 +1,106 @@
-# 🛠️ Coder Buddy
+# Website Builder (Coder Buddy)
 
-**Coder Buddy** is an AI-powered coding assistant built with [LangGraph](https://github.com/langchain-ai/langgraph).  
-It works like a multi-agent development team that can take a natural language request and transform it into a complete, working project — file by file — using real developer workflows.
+AI website builder: type a prompt, watch a multi-agent team (`Planner → Architect → Coder`) generate a vanilla HTML/CSS/JS app, then preview and edit it in the browser.
 
----
+## Architecture
 
-## 🏗️ Architecture
+| Layer | Stack | Role |
+|-------|--------|------|
+| Agent | LangGraph + Groq | Plans, designs file tasks, writes code |
+| Backend | FastAPI | JWT auth, project CRUD, WebSocket generation stream |
+| Frontend | Next.js 15 + Tailwind + Monaco | Dashboard, chat, editor, live iframe preview |
+| Data | SQLite (local) or Postgres | Projects, files, chat messages |
 
-- **Planner Agent** – Analyzes your request and generates a detailed project plan.
-- **Architect Agent** – Breaks down the plan into specific engineering tasks with explicit context for each file.
-- **Coder Agent** – Implements each task, writes directly into files, and uses available tools like a real developer.
+## Prerequisites
 
-<div style="text-align: center;">
-    <img src="resources/coder_buddy_diagram.png" alt="Coder Agent Architecture" width="90%"/>
-</div>
+- Python 3.11+ and [uv](https://docs.astral.sh/uv/getting-started/installation/)
+- Node.js 18+
+- A [Groq API key](https://console.groq.com/keys)
 
----
+## Setup
 
-## 🚀 Getting Started
-### Prerequisites
-- Make sure you have uv installed, follow the instructions [here](https://docs.astral.sh/uv/getting-started/installation/) to install it.
-- Ensure that you have created a groq account and have your API key ready. Create an API key [here](https://console.groq.com/keys).
+1. Create and activate a virtual environment:
 
-### ⚙️ **Instsllstion and Startup**
-- Create a virtual environment using: `uv venv` and activate it using `source .venv/bin/activate`
-- Install the dependencies using: `uv pip install -r pyproject.toml`
-- Create a `.env` file and add the variables and their respective values mentioned in the `.sample_env` file
+   ```bash
+   uv venv
+   # Windows PowerShell
+   .venv\Scripts\Activate.ps1
+   # macOS / Linux
+   source .venv/bin/activate
+   ```
 
-Now that we are done with all the set-up & installation steps we can start the application using the following command:
-  ```bash
-    python main.py
-  ```
+2. Install Python dependencies:
 
-### 🧪 Example Prompts
-- Create a to-do list application using html, css, and javascript.
+   ```bash
+   uv sync
+   ```
+
+3. Copy environment variables and fill in at least `GROQ_API_KEY`:
+
+   ```bash
+   cp .env.example .env
+   ```
+
+   Local defaults already use SQLite (`wb_dev.db`) and a `dev-token` JWT bypass when `APP_ENV=dev`. You do **not** need a real Spring Boot JWT for local use.
+
+4. Install the frontend:
+
+   ```bash
+   cd frontend
+   npm install
+   cd ..
+   ```
+
+## Run the full stack
+
+Terminal 1 — FastAPI backend (port 8001):
+
+```bash
+uv run uvicorn backend.main:app --reload --port 8001
+```
+
+Terminal 2 — Next.js UI (port 3000):
+
+```bash
+cd frontend
+npm run dev
+```
+
+Open http://localhost:3000
+
+The frontend talks to `http://localhost:8001/api/ai` and `ws://localhost:8001/api/ai` by default. Override with `NEXT_PUBLIC_API_BASE` / `NEXT_PUBLIC_WS_BASE` if needed.
+
+## Optional: CLI-only agent
+
+The original one-shot CLI still works. It writes into `generated_project/` (gitignored):
+
+```bash
+uv run python main.py
+```
+
+## Tests
+
+```bash
+uv sync
+uv run pytest
+```
+
+The planner smoke test is skipped unless `GROQ_API_KEY` is set.
+
+## How a generation works
+
+1. Create or open a project in the dashboard.
+2. Send a prompt in the chat (or use a starter template).
+3. **Auto mode** — Planner → Architect → Coder run in one shot.
+4. **Plan mode** — the graph pauses after the Architect; approve or cancel before any files are written.
+5. Follow-up messages use **edit mode**: existing files are loaded as context so the agents make targeted changes instead of regenerating the whole app.
+6. Files stream into Monaco and the preview iframe as they are written. Export ZIP from the workspace header.
+
+## Example prompts
+
+- Create a to-do list application using HTML, CSS, and JavaScript.
 - Create a simple calculator web application.
-- Create a simple blog API in FastAPI with a SQLite database.
+- Add a dark mode toggle and persist it in localStorage.
 
 ---
-Copyright©️ Codebasics Inc. All rights reserved.
+Copyright © Codebasics Inc. All rights reserved.

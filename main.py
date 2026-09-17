@@ -18,8 +18,8 @@ def main():
     try:
         user_prompt = input("Enter your project prompt: ")
         result = agent.invoke(
-            {"user_prompt": user_prompt},
-            {"recursion_limit": args.recursion_limit}
+            {"user_prompt": user_prompt, "mode": "auto"},
+            {"recursion_limit": args.recursion_limit, "configurable": {"thread_id": "cli"}},
         )
         print("Final State:", result)
     except KeyboardInterrupt:

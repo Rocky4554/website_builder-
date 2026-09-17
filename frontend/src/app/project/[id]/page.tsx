@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, use } from "react";
-import { useParams, useRouter } from "next/navigation";
+import React, { useState, useEffect, useRef } from "react";
+import { useParams } from "next/navigation";
 import confetti from "canvas-confetti";
 import { Header } from "@/components/workspace/Header";
 import { ChatPanel } from "@/components/workspace/ChatPanel";
@@ -14,6 +14,7 @@ import {
   DeviceMode,
   BuilderMode,
   GenerationEvent,
+  GenerationControls,
 } from "@/types";
 import {
   fetchProject,
@@ -22,12 +23,13 @@ import {
   streamProjectGeneration,
   saveLocalFiles,
   saveLocalMessages,
+  isLocalProjectId,
 } from "@/lib/api";
 
 export default function WorkspacePage() {
   const params = useParams();
-  const router = useRouter();
   const projectId = (params?.id as string) || "";
+  const genRef = useRef<GenerationControls | null>(null);
 
   const [project, setProject] = useState<Project | null>(null);
   const [files, setFiles] = useState<ProjectFile[]>([]);
@@ -86,21 +88,26 @@ export default function WorkspacePage() {
     setMessages(updatedMsgs);
     saveLocalMessages(projectId, updatedMsgs);
 
+    const mode = builderMode;
     setIsGenerating(true);
     setActiveNode("planner");
     setPendingPlan(null);
 
     let incomingFiles = [...files];
 
-    // Connect to WebSocket / stream generator
-    streamProjectGeneration(
+    genRef.current = streamProjectGeneration(
       projectId,
       promptText,
       (event: GenerationEvent) => {
         if (event.type === "status" && event.node) {
           setActiveNode(event.node);
+        } else if (
+          (event.type === "plan" || event.type === "awaiting_approval") &&
+          event.plan &&
+          mode === "plan"
+        ) {
+          setPendingPlan(event.plan);
         } else if (event.type === "file" && event.path && event.content !== undefined) {
-          // File arrived or updated
           const existingIdx = incomingFiles.findIndex((f) => f.path === event.path);
           if (existingIdx !== -1) {
             incomingFiles[existingIdx] = {
@@ -120,6 +127,7 @@ export default function WorkspacePage() {
         } else if (event.type === "complete") {
           setIsGenerating(false);
           setActiveNode(null);
+          setPendingPlan(null);
           confetti({
             particleCount: 80,
             spread: 70,
@@ -133,12 +141,27 @@ export default function WorkspacePage() {
           const finalMsgs = [...updatedMsgs, assistantMsg];
           setMessages(finalMsgs);
           saveLocalMessages(projectId, finalMsgs);
+        } else if (event.type === "cancelled") {
+          setIsGenerating(false);
+          setActiveNode(null);
+          setPendingPlan(null);
+          const cancelMsg: Message = {
+            role: "assistant",
+            content: "Build cancelled. The plan was not approved.",
+            created_at: new Date().toISOString(),
+          };
+          const finalMsgs = [...updatedMsgs, cancelMsg];
+          setMessages(finalMsgs);
+          saveLocalMessages(projectId, finalMsgs);
         } else if (event.type === "error") {
           setIsGenerating(false);
           setActiveNode(null);
+          setPendingPlan(null);
           const errorMsg: Message = {
             role: "assistant",
-            content: `⚠️ Generation error: ${event.message || "Something went wrong during generation."}`,
+            content: event.partial
+              ? `⚠️ Partial generation: ${event.message || "Some files failed."} Written files are still in the editor.`
+              : `⚠️ Generation error: ${event.message || "Something went wrong during generation."}`,
             created_at: new Date().toISOString(),
           };
           const finalMsgs = [...updatedMsgs, errorMsg];
@@ -149,7 +172,8 @@ export default function WorkspacePage() {
       () => {
         setIsGenerating(false);
         setActiveNode(null);
-      }
+      },
+      { mode }
     );
   };
 
@@ -199,6 +223,7 @@ export default function WorkspacePage() {
         deviceMode={deviceMode}
         setDeviceMode={setDeviceMode}
         isGenerating={isGenerating}
+        isOffline={isLocalProjectId(projectId)}
         onRefreshPreview={() => setRefreshTrigger((prev) => prev + 1)}
         onPopoutPreview={handlePopoutPreview}
       />
@@ -216,9 +241,11 @@ export default function WorkspacePage() {
             onSendMessage={handleSendMessage}
             pendingPlan={pendingPlan}
             onApprovePlan={() => {
+              genRef.current?.approve();
               setPendingPlan(null);
             }}
             onRejectPlan={() => {
+              genRef.current?.reject();
               setPendingPlan(null);
               setIsGenerating(false);
             }}

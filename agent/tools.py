@@ -1,7 +1,6 @@
 import contextvars
 import pathlib
-import subprocess
-from typing import Callable, Optional, Tuple
+from typing import Callable, Optional
 
 from langchain_core.tools import tool
 
@@ -82,20 +81,13 @@ def list_files(directory: str = ".") -> str:
     return "\n".join(files) if files else "No files found."
 
 
-@tool
-def run_cmd(cmd: str, cwd: str = None, timeout: int = 30) -> Tuple[int, str, str]:
-    """Runs a shell command in the specified directory and returns the result."""
-    cwd_dir = safe_path_for_project(cwd) if cwd else project_root()
-    res = subprocess.run(cmd, shell=True, cwd=str(cwd_dir), capture_output=True, text=True, timeout=timeout)
-    return res.returncode, res.stdout, res.stderr
-
-
 def init_project_root() -> str:
     root = project_root()
     root.mkdir(parents=True, exist_ok=True)
     return str(root)
 
+
 @tool
-def list_file(directory: str = '.') -> str:
+def list_file(directory: str = ".") -> str:
     """Alias for list_files."""
     return list_files(directory)

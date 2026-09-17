@@ -1,8 +1,12 @@
-import { Project, ProjectFile, Message, GenerationEvent } from "@/types";
+import { Project, ProjectFile, Message, GenerationEvent, GenerationControls, BuilderMode } from "@/types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8001/api/ai";
 const WS_BASE = process.env.NEXT_PUBLIC_WS_BASE || "ws://localhost:8001/api/ai";
 const AUTH_TOKEN = "dev-token";
+
+export function isLocalProjectId(id: string): boolean {
+  return id.startsWith("local-") || id.startsWith("demo-");
+}
 
 export async function fetchProjects(): Promise<Project[]> {
   try {
@@ -38,6 +42,11 @@ export async function createProject(name: string, description?: string): Promise
 }
 
 export async function fetchProject(id: string): Promise<Project> {
+  if (isLocalProjectId(id)) {
+    const local = getLocalProject(id);
+    if (!local) throw new Error("Project not found");
+    return local;
+  }
   try {
     const res = await fetch(`${API_BASE}/projects/${id}`, {
       headers: {
@@ -55,6 +64,10 @@ export async function fetchProject(id: string): Promise<Project> {
 }
 
 export async function deleteProject(id: string): Promise<void> {
+  if (isLocalProjectId(id)) {
+    deleteLocalProject(id);
+    return;
+  }
   try {
     const res = await fetch(`${API_BASE}/projects/${id}`, {
       method: "DELETE",
@@ -69,6 +82,9 @@ export async function deleteProject(id: string): Promise<void> {
 }
 
 export async function fetchMessages(projectId: string): Promise<Message[]> {
+  if (isLocalProjectId(projectId)) {
+    return getLocalMessages(projectId);
+  }
   try {
     const res = await fetch(`${API_BASE}/projects/${projectId}/messages`, {
       headers: {
@@ -83,6 +99,9 @@ export async function fetchMessages(projectId: string): Promise<Message[]> {
 }
 
 export async function fetchProjectFiles(projectId: string): Promise<ProjectFile[]> {
+  if (isLocalProjectId(projectId)) {
+    return getLocalFiles(projectId);
+  }
   try {
     const res = await fetch(`${API_BASE}/projects/${projectId}/files`, {
       headers: {
@@ -106,18 +125,36 @@ export async function fetchProjectFiles(projectId: string): Promise<ProjectFile[
   }
 }
 
+function noopControls(): GenerationControls {
+  return { close: () => {}, approve: () => {}, reject: () => {} };
+}
+
 /**
  * Connect to generation stream over WebSocket.
+ * Local / offline projects never hit the backend (their ids are not UUIDs).
  */
 export function streamProjectGeneration(
   projectId: string,
   prompt: string,
   onEvent: (event: GenerationEvent) => void,
-  onClose?: () => void
-): () => void {
+  onClose?: () => void,
+  options?: { mode?: BuilderMode }
+): GenerationControls {
+  const sendAction = (ws: WebSocket | null, action: "approve" | "reject") => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ action }));
+    }
+  };
+
+  if (isLocalProjectId(projectId)) {
+    simulateOfflineGeneration(projectId, prompt, onEvent);
+    return noopControls();
+  }
+
   const wsUrl = `${WS_BASE}/projects/${projectId}/generate`;
   let ws: WebSocket | null = null;
   let isClosed = false;
+  let usedFallback = false;
 
   try {
     ws = new WebSocket(wsUrl);
@@ -126,7 +163,8 @@ export function streamProjectGeneration(
       ws?.send(
         JSON.stringify({
           token: AUTH_TOKEN,
-          prompt: prompt,
+          prompt,
+          mode: options?.mode || "auto",
         })
       );
     };
@@ -142,8 +180,10 @@ export function streamProjectGeneration(
 
     ws.onerror = (err) => {
       console.warn("WebSocket error:", err);
-      // Fallback local simulated generation for demo if backend is offline
-      simulateOfflineGeneration(projectId, prompt, onEvent);
+      if (!usedFallback) {
+        usedFallback = true;
+        simulateOfflineGeneration(projectId, prompt, onEvent);
+      }
     };
 
     ws.onclose = () => {
@@ -154,13 +194,18 @@ export function streamProjectGeneration(
   } catch (e) {
     console.warn("Could not initiate WebSocket:", e);
     simulateOfflineGeneration(projectId, prompt, onEvent);
+    return noopControls();
   }
 
-  return () => {
-    isClosed = true;
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.close();
-    }
+  return {
+    close: () => {
+      isClosed = true;
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.close();
+      }
+    },
+    approve: () => sendAction(ws, "approve"),
+    reject: () => sendAction(ws, "reject"),
   };
 }
 

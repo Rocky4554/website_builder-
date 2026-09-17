@@ -25,6 +25,7 @@ interface HeaderProps {
   deviceMode: DeviceMode;
   setDeviceMode: (mode: DeviceMode) => void;
   isGenerating: boolean;
+  isOffline?: boolean;
   onRefreshPreview: () => void;
   onPopoutPreview: () => void;
 }
@@ -35,6 +36,7 @@ export function Header({
   deviceMode,
   setDeviceMode,
   isGenerating,
+  isOffline = false,
   onRefreshPreview,
   onPopoutPreview,
 }: HeaderProps) {
@@ -86,7 +88,12 @@ export function Header({
         </div>
 
         {/* Live Status indicator */}
-        {isGenerating ? (
+        {isOffline ? (
+          <span className="hidden sm:inline-flex items-center gap-1.5 text-[11px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/30 font-medium">
+            <AlertCircle className="w-3 h-3" />
+            Offline demo — start the backend to save for real
+          </span>
+        ) : isGenerating ? (
           <span className="hidden sm:inline-flex items-center gap-1.5 text-[11px] px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/30 animate-pulse font-medium">
             <Loader2 className="w-3 h-3 animate-spin" />
             AI Generating...

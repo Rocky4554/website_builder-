@@ -34,10 +34,17 @@ export type DeviceMode = "desktop" | "tablet" | "mobile";
 export type BuilderMode = "auto" | "plan";
 
 export interface GenerationEvent {
-  type: "status" | "file" | "complete" | "error" | "plan";
-  node?: "planner" | "architect" | "coder";
+  type: "status" | "file" | "complete" | "error" | "plan" | "awaiting_approval" | "cancelled";
+  node?: "planner" | "architect" | "coder" | "plan_gate";
   path?: string;
   content?: string;
   message?: string;
   plan?: any;
+  partial?: boolean;
+}
+
+export interface GenerationControls {
+  close: () => void;
+  approve: () => void;
+  reject: () => void;
 }

@@ -1,4 +1,4 @@
-"""FastAPI entrypoint for the website-builder AI service.
+﻿"""FastAPI entrypoint for the website-builder AI service.
 
 Run (dev):
     uv run uvicorn backend.main:app --reload --port 8001
@@ -13,7 +13,9 @@ from backend.api import generate as generate_api
 from backend.api import projects as projects_api
 from backend.config import get_settings
 from backend.security.auth import CurrentUser, get_current_user
+from backend.logging_config import setup_logging
 
+setup_logging()
 logger = logging.getLogger("backend")
 
 

@@ -249,10 +249,17 @@ export function ChatPanel({
           <div className="p-4 rounded-2xl bg-slate-900 border border-indigo-500/50 shadow-xl space-y-3">
             <div className="flex items-center gap-2 text-indigo-300 font-semibold text-xs">
               <ClipboardList className="w-4 h-4" />
-              <span>Plan Review Required</span>
+              <span>{pendingPlan.app_name || "Plan Review Required"}</span>
             </div>
-            <p className="text-xs text-slate-300">
-              The AI architect proposed the plan above. Ready to build files?
+            {Array.isArray(pendingPlan.features) && pendingPlan.features.length > 0 && (
+              <ul className="list-disc list-inside space-y-1 text-slate-300 text-[11px]">
+                {pendingPlan.features.map((feat: string, fidx: number) => (
+                  <li key={fidx}>{feat}</li>
+                ))}
+              </ul>
+            )}
+            <p className="text-xs text-slate-400">
+              Review the plan, then approve to write files or cancel to stop.
             </p>
             <div className="flex items-center gap-2 pt-1">
               <button
