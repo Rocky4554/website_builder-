@@ -34,7 +34,15 @@ export type DeviceMode = "desktop" | "tablet" | "mobile";
 export type BuilderMode = "auto" | "plan";
 
 export interface GenerationEvent {
-  type: "status" | "file" | "complete" | "error" | "plan" | "awaiting_approval" | "cancelled";
+  type:
+    | "status"
+    | "file"
+    | "complete"
+    | "error"
+    | "plan"
+    | "awaiting_approval"
+    | "cancelled"
+    | "simulated";
   node?: "planner" | "architect" | "coder" | "plan_gate";
   path?: string;
   content?: string;

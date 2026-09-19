@@ -85,9 +85,3 @@ def init_project_root() -> str:
     root = project_root()
     root.mkdir(parents=True, exist_ok=True)
     return str(root)
-
-
-@tool
-def list_file(directory: str = ".") -> str:
-    """Alias for list_files."""
-    return list_files(directory)

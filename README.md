@@ -70,6 +70,31 @@ Open http://localhost:3000
 
 The frontend talks to `http://localhost:8001/api/ai` and `ws://localhost:8001/api/ai` by default. Override with `NEXT_PUBLIC_API_BASE` / `NEXT_PUBLIC_WS_BASE` if needed.
 
+## Authentication
+
+This service **verifies** JWTs but never issues them — the host Spring Boot app is the
+single source of truth for identity. The backend checks the signature with
+`JWT_SECRET` (HS*) or `JWT_PUBLIC_KEY` (RS256) and reads the user id from the
+`JWT_USER_ID_CLAIM` claim (`userId` by default).
+
+**Local development:** with `APP_ENV=dev` the backend accepts the literal string
+`dev-token`, which is what the frontend sends when nothing else is configured. No
+real JWT needed.
+
+**Real deployment:** the token reaches the browser one of three ways, checked in
+this order by `frontend/src/lib/auth.ts`:
+
+1. `?token=<jwt>` on any URL — the host app redirects here with the token
+   appended. It is persisted and stripped from the address bar immediately, so it
+   never lands in browser history or server access logs.
+2. `localStorage["wb_auth_token"]` — persisted from a previous handoff, or set by
+   a host page that embeds this UI (`setAuthToken(jwt)`).
+3. `NEXT_PUBLIC_DEV_AUTH_TOKEN` — development fallback only (defaults to
+   `dev-token`).
+
+There is deliberately **no login/signup flow in this repo**; adding one would
+create a second identity source.
+
 ## Optional: CLI-only agent
 
 The original one-shot CLI still works. It writes into `generated_project/` (gitignored):
@@ -95,6 +120,13 @@ The planner smoke test is skipped unless `GROQ_API_KEY` is set.
 4. **Plan mode** — the graph pauses after the Architect; approve or cancel before any files are written.
 5. Follow-up messages use **edit mode**: existing files are loaded as context so the agents make targeted changes instead of regenerating the whole app.
 6. Files stream into Monaco and the preview iframe as they are written. Export ZIP from the workspace header.
+
+Generations are rate limited to 5 per 5 minutes per user.
+
+If the backend is unreachable the UI falls back to **offline demo mode**: projects
+live in `localStorage` and generations return canned sample files. This is clearly
+labelled — an amber "Offline demo" badge appears in the workspace header and the
+chat says the files are sample content, not a real AI build.
 
 ## Example prompts
 

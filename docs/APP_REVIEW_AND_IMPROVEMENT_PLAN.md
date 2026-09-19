@@ -113,6 +113,12 @@ apps.
    UUID) and the user is stuck in a half-broken state with no clear message
    explaining why. There's also no visible "offline/demo mode" indicator, so a
    user can't tell simulated content from a real AI generation.
+   → **Resolved.** `isLocalProjectId` short-circuits every API call for
+   `local-*`/`demo-*` ids, and the workspace header shows an amber "Offline
+   demo" badge. The *second* half — a real project silently falling back to
+   canned content when the WebSocket fails — now emits a `simulated` event, so
+   the header badge lights up, confetti is suppressed, and the chat says the
+   files are sample content rather than an AI build.
 
 8. **Hardcoded single `dev-token`, no real auth wiring.** `frontend/src/lib/api.ts`
    sends `Authorization: Bearer dev-token` unconditionally. That's fine for the
@@ -121,6 +127,12 @@ apps.
    or implements *how* a real token gets from that host app into the Next.js
    frontend. If this frontend is meant to be used standalone (as the README
    suggests), there is no login/signup flow at all.
+   → **Resolved.** `frontend/src/lib/auth.ts` implements the handoff: a
+   `?token=<jwt>` query param (persisted, then stripped from the URL so it never
+   reaches history or access logs), then `localStorage["wb_auth_token"]`, then a
+   `NEXT_PUBLIC_DEV_AUTH_TOKEN` dev fallback. Documented under "Authentication"
+   in the README. No login flow was added on purpose — that would create a
+   second identity source alongside the host app.
 
 ### 🟡 Medium
 
@@ -164,12 +176,18 @@ apps.
 15. Frontend uses `alert()`/`confirm()` browser dialogs for delete confirmation
     (`page.tsx`) — inconsistent with the otherwise polished custom-modal UI
     elsewhere; swap for the existing modal pattern.
+    → **Resolved.** Delete now goes through a `pendingDeleteId` custom modal
+    matching the "Create New Project" dialog.
 16. `agent/prompts.py` locks the Coder to *only* vanilla HTML/CSS/JS. That's a
     deliberate, sensible MVP constraint (matches `PREVIEW_OPTIONS.md`'s "Option
     A" decision) — just flagging so nobody "fixes" the Planner prompt to allow
     React without also solving the preview-runtime story first.
 17. No favicon/OG metadata customization in `frontend/src/app/layout.tsx`
     (not checked in depth, but worth a pass before any public launch).
+    → **Resolved.** Added `src/app/icon.svg` (auto-served as the favicon) plus
+    `metadataBase`, a title template, Open Graph and Twitter card tags, and a
+    `viewport` export with `themeColor`. Set `NEXT_PUBLIC_SITE_URL` in prod so
+    OG URLs aren't `localhost`.
 18. `backend/config.py`'s dev JWT bypass (`dev-token`/`dev`/`mock-token`/etc.)
     is safely gated behind `app_env == "dev"`, but double-check this can never
     be reached with `APP_ENV=prod` misconfigured to something else like
@@ -249,10 +267,27 @@ apps.
 - [x] Add basic per-user/per-IP rate limiting on the `/generate` WebSocket
       (even a simple in-memory token bucket keyed by user id is enough for now).
 
-### 4.4 Later / already tracked in `BUILD_PLAN.md`
+### 4.4 Polish (issues 7b, 8, 15, 17)
+
+- [x] Replace `alert()`/`confirm()` delete confirmation with the existing custom
+      modal pattern.
+- [x] Implement the auth-token handoff (`frontend/src/lib/auth.ts`) so a real
+      host-app JWT can reach the frontend, and document it in the README.
+- [x] Label the WebSocket-failure fallback: emit a `simulated` event so canned
+      demo files are never presented as a real AI generation (no confetti, amber
+      header badge, explicit chat message).
+- [x] Add favicon (`src/app/icon.svg`) + Open Graph / Twitter / theme-color
+      metadata.
+- [x] Delete the dead, broken `list_file` alias in `agent/tools.py` — it called
+      the `list_files` **tool object** directly, so it would have raised if ever
+      wired up. Same class of trap as the `run_cmd` tool in issue #10.
+- [x] Ignore `*.tsbuildinfo` (TypeScript build artifact, issue #1 hygiene).
+
+### 4.5 Later / already tracked in `BUILD_PLAN.md`
 
 These are bigger, already-documented in the existing plan docs — listed here
-just so this review doesn't duplicate them:
+just so this review doesn't duplicate them. **They are intentionally still
+open**; none of them is started:
 
 - Token-by-token file streaming (Phase 4).
 - WebContainers-based live preview for non-static-HTML stacks (Phase 3,
@@ -263,14 +298,22 @@ just so this review doesn't duplicate them:
 
 ---
 
-## 5. Suggested order of attack
+## 5. Status — 2026-09-19
 
-1. `.gitignore` fix + repo hygiene (§4.1) — 15 minutes, prevents a real
-   incident.
-2. Turn off agent debug logging (§4.1) — 5 minutes.
-3. Sequential (or dependency-aware) coder execution + partial-failure
-   surfacing (§4.2, items 1–2) — fixes real correctness bugs in the core loop.
-4. Decide Plan Mode's fate (ship or remove) (§4.2) — removes user confusion.
-5. README + workspace cleanup (§4.2) — onboarding/DX.
-6. Real edit mode (§4.3) — the biggest product upgrade, tackle once the above
-   is stable.
+Everything in §4.1–§4.4 is implemented. Verified on this date:
+
+- `uv run pytest` → 16 passed, 1 skipped (the planner smoke test, which needs a
+  real `GROQ_API_KEY`).
+- `npx tsc --noEmit` → clean. `npm run build` → clean, 5 routes.
+- Favicon and OG/Twitter/theme-color tags confirmed in the served HTML against a
+  running dev server.
+
+**Not verified by clicking through the UI**: the `?token=` auth handoff and the
+offline-fallback banner are client-side paths that need a browser session (and,
+for a real generation, a Groq key). Both typecheck and build, but exercise them
+manually before relying on them.
+
+Everything in §4.5 remains open by design — those are `BUILD_PLAN.md` phases,
+not review findings. The next highest-value one is **token-by-token streaming**
+(Phase 4): the agent currently emits one `file` event per completed file, so the
+UI has no progress signal during the slowest part of a generation.

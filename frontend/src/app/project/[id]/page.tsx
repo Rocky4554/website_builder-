@@ -41,6 +41,7 @@ export default function WorkspacePage() {
   const [activeNode, setActiveNode] = useState<string | null>(null);
   const [pendingPlan, setPendingPlan] = useState<any | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [isSimulated, setIsSimulated] = useState(false);
 
   // Load project files and messages on mount
   useEffect(() => {
@@ -94,12 +95,16 @@ export default function WorkspacePage() {
     setPendingPlan(null);
 
     let incomingFiles = [...files];
+    let simulated = false;
 
     genRef.current = streamProjectGeneration(
       projectId,
       promptText,
       (event: GenerationEvent) => {
-        if (event.type === "status" && event.node) {
+        if (event.type === "simulated") {
+          simulated = true;
+          setIsSimulated(true);
+        } else if (event.type === "status" && event.node) {
           setActiveNode(event.node);
         } else if (
           (event.type === "plan" || event.type === "awaiting_approval") &&
@@ -128,14 +133,18 @@ export default function WorkspacePage() {
           setIsGenerating(false);
           setActiveNode(null);
           setPendingPlan(null);
-          confetti({
-            particleCount: 80,
-            spread: 70,
-            origin: { y: 0.6 },
-          });
+          if (!simulated) {
+            confetti({
+              particleCount: 80,
+              spread: 70,
+              origin: { y: 0.6 },
+            });
+          }
           const assistantMsg: Message = {
             role: "assistant",
-            content: `✨ Application built successfully with ${incomingFiles.length} files. You can preview it live or keep chatting to make edits!`,
+            content: simulated
+              ? `⚠️ Offline demo — these ${incomingFiles.length} files are canned sample content, not an AI build. Start the backend and try again for a real generation.`
+              : `✨ Application built successfully with ${incomingFiles.length} files. You can preview it live or keep chatting to make edits!`,
             created_at: new Date().toISOString(),
           };
           const finalMsgs = [...updatedMsgs, assistantMsg];
@@ -223,7 +232,7 @@ export default function WorkspacePage() {
         deviceMode={deviceMode}
         setDeviceMode={setDeviceMode}
         isGenerating={isGenerating}
-        isOffline={isLocalProjectId(projectId)}
+        isOffline={isLocalProjectId(projectId) || isSimulated}
         onRefreshPreview={() => setRefreshTrigger((prev) => prev + 1)}
         onPopoutPreview={handlePopoutPreview}
       />

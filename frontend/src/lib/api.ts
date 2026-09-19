@@ -1,8 +1,8 @@
 import { Project, ProjectFile, Message, GenerationEvent, GenerationControls, BuilderMode } from "@/types";
+import { authHeaders, getAuthToken } from "@/lib/auth";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8001/api/ai";
 const WS_BASE = process.env.NEXT_PUBLIC_WS_BASE || "ws://localhost:8001/api/ai";
-const AUTH_TOKEN = "dev-token";
 
 export function isLocalProjectId(id: string): boolean {
   return id.startsWith("local-") || id.startsWith("demo-");
@@ -11,9 +11,7 @@ export function isLocalProjectId(id: string): boolean {
 export async function fetchProjects(): Promise<Project[]> {
   try {
     const res = await fetch(`${API_BASE}/projects`, {
-      headers: {
-        Authorization: `Bearer ${AUTH_TOKEN}`,
-      },
+      headers: authHeaders(),
     });
     if (!res.ok) throw new Error("Failed to fetch projects");
     return await res.json();
@@ -27,10 +25,7 @@ export async function createProject(name: string, description?: string): Promise
   try {
     const res = await fetch(`${API_BASE}/projects`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${AUTH_TOKEN}`,
-      },
+      headers: { "Content-Type": "application/json", ...authHeaders() },
       body: JSON.stringify({ name, description }),
     });
     if (!res.ok) throw new Error("Failed to create project");
@@ -49,9 +44,7 @@ export async function fetchProject(id: string): Promise<Project> {
   }
   try {
     const res = await fetch(`${API_BASE}/projects/${id}`, {
-      headers: {
-        Authorization: `Bearer ${AUTH_TOKEN}`,
-      },
+      headers: authHeaders(),
     });
     if (!res.ok) throw new Error("Failed to fetch project");
     return await res.json();
@@ -71,9 +64,7 @@ export async function deleteProject(id: string): Promise<void> {
   try {
     const res = await fetch(`${API_BASE}/projects/${id}`, {
       method: "DELETE",
-      headers: {
-        Authorization: `Bearer ${AUTH_TOKEN}`,
-      },
+      headers: authHeaders(),
     });
     if (!res.ok) throw new Error("Failed to delete project");
   } catch (err) {
@@ -87,9 +78,7 @@ export async function fetchMessages(projectId: string): Promise<Message[]> {
   }
   try {
     const res = await fetch(`${API_BASE}/projects/${projectId}/messages`, {
-      headers: {
-        Authorization: `Bearer ${AUTH_TOKEN}`,
-      },
+      headers: authHeaders(),
     });
     if (!res.ok) throw new Error("Failed to fetch messages");
     return await res.json();
@@ -104,16 +93,14 @@ export async function fetchProjectFiles(projectId: string): Promise<ProjectFile[
   }
   try {
     const res = await fetch(`${API_BASE}/projects/${projectId}/files`, {
-      headers: {
-        Authorization: `Bearer ${AUTH_TOKEN}`,
-      },
+      headers: authHeaders(),
     });
     if (!res.ok) throw new Error("Failed to fetch files");
     const metaList = await res.json();
     const fullFiles: ProjectFile[] = [];
     for (const f of metaList) {
       const fres = await fetch(`${API_BASE}/projects/${projectId}/files/${f.id}`, {
-        headers: { Authorization: `Bearer ${AUTH_TOKEN}` },
+        headers: authHeaders(),
       });
       if (fres.ok) {
         fullFiles.push(await fres.json());
@@ -147,7 +134,7 @@ export function streamProjectGeneration(
   };
 
   if (isLocalProjectId(projectId)) {
-    simulateOfflineGeneration(projectId, prompt, onEvent);
+    startSimulation(projectId, prompt, onEvent);
     return noopControls();
   }
 
@@ -162,7 +149,7 @@ export function streamProjectGeneration(
     ws.onopen = () => {
       ws?.send(
         JSON.stringify({
-          token: AUTH_TOKEN,
+          token: getAuthToken(),
           prompt,
           mode: options?.mode || "auto",
         })
@@ -182,7 +169,7 @@ export function streamProjectGeneration(
       console.warn("WebSocket error:", err);
       if (!usedFallback) {
         usedFallback = true;
-        simulateOfflineGeneration(projectId, prompt, onEvent);
+        startSimulation(projectId, prompt, onEvent);
       }
     };
 
@@ -193,7 +180,7 @@ export function streamProjectGeneration(
     };
   } catch (e) {
     console.warn("Could not initiate WebSocket:", e);
-    simulateOfflineGeneration(projectId, prompt, onEvent);
+    startSimulation(projectId, prompt, onEvent);
     return noopControls();
   }
 
@@ -298,6 +285,22 @@ function getDefaultStarterProjects(): Project[] {
       updated_at: new Date(Date.now() - 3600000).toISOString(),
     },
   ];
+}
+
+/**
+ * Announce that what follows is canned demo content, not a real AI generation,
+ * then run the simulation. Without this the UI can't tell the two apart.
+ */
+function startSimulation(
+  projectId: string,
+  prompt: string,
+  onEvent: (event: GenerationEvent) => void
+) {
+  onEvent({
+    type: "simulated",
+    message: "Backend unreachable — showing offline demo content, not a real AI build.",
+  });
+  simulateOfflineGeneration(projectId, prompt, onEvent);
 }
 
 function simulateOfflineGeneration(

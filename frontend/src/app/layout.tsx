@@ -1,9 +1,35 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+const TITLE = "Website Builder — AI Website & App Builder";
+const DESCRIPTION =
+  "Prompt to full working web applications with instant live preview, code editing, and multi-agent AI engine.";
+
 export const metadata: Metadata = {
-  title: "Lovable.dev Clone — AI Website & App Builder",
-  description: "Prompt to full working web applications with instant live preview, code editing, and multi-agent AI engine.",
+  metadataBase: new URL(SITE_URL),
+  title: { default: TITLE, template: "%s — Website Builder" },
+  description: DESCRIPTION,
+  applicationName: "Website Builder",
+  keywords: ["AI website builder", "code generation", "LangGraph", "live preview"],
+  openGraph: {
+    type: "website",
+    url: SITE_URL,
+    siteName: "Website Builder",
+    title: TITLE,
+    description: DESCRIPTION,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: TITLE,
+    description: DESCRIPTION,
+  },
+  robots: { index: true, follow: true },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#080c16",
+  colorScheme: "dark",
 };
 
 export default function RootLayout({
