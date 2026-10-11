@@ -1,4 +1,4 @@
-﻿"""FastAPI entrypoint for the website-builder AI service.
+"""FastAPI entrypoint for the website-builder AI service.
 
 Run (dev):
     uv run uvicorn backend.main:app --reload --port 8001
@@ -63,10 +63,22 @@ def create_app() -> FastAPI:
         allow_headers=["Authorization", "Content-Type"],
     )
 
-    # --- Public: liveness probe, no auth (so Spring/infra can health-check it) ---
+    # --- Public: liveness probe & service root, no auth (so Spring/infra can health-check it) ---
+    @app.get("/", tags=["meta"])
+    async def root() -> dict:
+        return {
+            "name": "Website Builder AI Service",
+            "version": "0.1.0",
+            "status": "online",
+            "docs": "/docs" if settings.app_env != "prod" else None,
+            "health": "/health",
+            "api_prefix": settings.api_prefix,
+        }
+
     @app.get("/health", tags=["meta"])
     async def health() -> dict:
         return {"status": "ok", "service": "website-builder-ai", "env": settings.app_env}
+
 
     # --- Protected routes live under the api prefix and all require a valid JWT ---
     api = APIRouter(prefix=settings.api_prefix)

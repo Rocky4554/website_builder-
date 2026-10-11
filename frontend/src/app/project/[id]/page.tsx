@@ -25,6 +25,8 @@ import {
   saveLocalMessages,
   isLocalProjectId,
 } from "@/lib/api";
+import { buildPreviewDoc } from "@/lib/preview-runtime";
+
 
 export default function WorkspacePage() {
   const params = useParams();
@@ -214,14 +216,16 @@ export default function WorkspacePage() {
   };
 
   const handlePopoutPreview = () => {
-    const htmlFile = files.find((f) => f.path.toLowerCase().endsWith(".html")) || files[0];
-    if (!htmlFile) return;
+    if (!files || files.length === 0) return;
+    const fullDoc = buildPreviewDoc(files);
     const win = window.open("", "_blank");
     if (win) {
-      win.document.write(htmlFile.content);
+      win.document.open();
+      win.document.write(fullDoc);
       win.document.close();
     }
   };
+
 
   return (
     <div className="h-screen w-screen flex flex-col bg-[#080c16] text-slate-100 overflow-hidden">

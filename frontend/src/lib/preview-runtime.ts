@@ -84,6 +84,21 @@ export function buildPreviewDoc(files: ProjectFile[]): string {
 </html>`;
   }
 
+  // Neutralize relative <link rel="stylesheet"> tags so sandboxed iframe / popouts
+  // don't trigger 404 network fetch errors (the files are cleanly inlined as <style>)
+  doc = doc.replace(
+    /<link\s+[^>]*rel=["']stylesheet["'][^>]*href=["'](?!https?:\/\/|\/\/)([^"']+)["'][^>]*>/gi,
+    "<!-- inlined stylesheet: $1 -->"
+  );
+
+  // Neutralize relative <script src="..."> tags so sandboxed iframe / popouts
+  // don't trigger 404 network fetch errors (the files are cleanly inlined as <script>)
+  doc = doc.replace(
+    /<script\s+[^>]*src=["'](?!https?:\/\/|\/\/)([^"']+)["'][^>]*>\s*<\/script>/gi,
+    "<!-- inlined script: $1 -->"
+  );
+
+
   // Inject console interception script to pipe logs back to parent window
   const consoleScript = `
 <script>
